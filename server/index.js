@@ -11,7 +11,14 @@ const pool = new Pool({
     connectionString: process.env.DATABASE_URL,
     ssl: {
         rejectUnauthorized: false
-    }
+    },
+    // Force IPv4
+    host: process.env.PGHOST4 || process.env.PGHOST,
+    // Add connection options
+    options: '-c search_path=public',
+    keepAlive: true,
+    idleTimeoutMillis: 30000,
+    connectionTimeoutMillis: 10000
 });
 
 // Add health check endpoint
@@ -26,19 +33,28 @@ async function connectDB() {
         try {
             const client = await pool.connect();
             console.log('Connected to PostgreSQL database');
-            console.log('Connection string:', process.env.DATABASE_URL?.replace(/:[^:@]*@/, ':****@')); // Hide password
+            console.log('Connection info:', {
+                host: process.env.PGHOST,
+                port: process.env.PGPORT,
+                database: process.env.PGDATABASE,
+                user: process.env.PGUSER?.split('@')[0] // Log without password
+            });
             await createTable();
             client.release();
             return;
         } catch (err) {
             console.error(`Connection attempt ${6 - retries} failed:`, err.message);
-            console.error('Full error:', err);
+            console.error('Connection error details:', {
+                code: err.code,
+                syscall: err.syscall,
+                address: err.address
+            });
             retries -= 1;
             if (!retries) {
                 console.log('Failed to connect after 5 attempts, but continuing...');
                 return;
             }
-            await new Promise(resolve => setTimeout(resolve, 5000)); // Increased wait time
+            await new Promise(resolve => setTimeout(resolve, 5000));
         }
     }
 }
@@ -76,6 +92,11 @@ app.use(cors({
 }));
 
 app.use(express.json());
+
+// Add at the start of your routes
+app.get('/', (req, res) => {
+    res.json({ message: 'Server is running' });
+});
 
 // Get all todos
 app.get('/api/mytodos', async (req, res) => {
