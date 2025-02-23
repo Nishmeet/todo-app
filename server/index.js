@@ -1,32 +1,67 @@
+require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
-const { MongoClient, ObjectId } = require('mongodb');
+const { Pool } = require('pg');
 
 const app = express();
 const PORT = process.env.PORT || 4000;
 
-// MongoDB Connection URL
-const MONGODB_URI = process.env.MONGODB_URI || 'mongodb+srv://your-mongodb-url';
-let db;
+// Database configuration
+const pool = new Pool({
+    connectionString: process.env.DATABASE_URL,
+    ssl: {
+        rejectUnauthorized: false
+    }
+});
 
-// Connect to MongoDB
-async function connectToDb() {
-    try {
-        const client = await MongoClient.connect(MONGODB_URI);
-        db = client.db('tododb');
-        console.log('Connected to MongoDB');
-    } catch (err) {
-        console.error('MongoDB connection error:', err);
+// Test database connection with retries
+async function connectDB() {
+    let retries = 5;
+    while (retries) {
+        try {
+            const client = await pool.connect();
+            console.log('Connected to PostgreSQL database');
+            await createTable();
+            client.release();
+            return;
+        } catch (err) {
+            console.error(`Connection attempt ${6 - retries} failed:`, err.message);
+            retries -= 1;
+            if (!retries) {
+                console.log('Failed to connect after 5 attempts, but continuing...');
+                return;
+            }
+            await new Promise(resolve => setTimeout(resolve, 2000));
+        }
     }
 }
 
-connectToDb();
+// Create table if not exists
+async function createTable() {
+    const sql = `
+        CREATE TABLE IF NOT EXISTS mytodos (
+            id SERIAL PRIMARY KEY,
+            text TEXT NOT NULL,
+            completed BOOLEAN DEFAULT FALSE,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    `;
+    try {
+        await pool.query(sql);
+        console.log('Table check/creation successful');
+    } catch (err) {
+        console.error('Error creating table:', err.message);
+    }
+}
+
+// Initialize database connection
+connectDB().catch(console.error);
 
 app.use(cors({
     origin: [
         'http://localhost:3000',
-        'https://todo-app-myclient.onrender.com',  // Add your new client URL
-       
+        'https://todo-app-myclient.onrender.com',
+        'https://your-render-server-url.onrender.com'
     ],
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     credentials: true,
@@ -38,8 +73,8 @@ app.use(express.json());
 // Get all todos
 app.get('/api/mytodos', async (req, res) => {
     try {
-        const todos = await db.collection('todos').find().toArray();
-        res.json(todos);
+        const result = await pool.query('SELECT * FROM mytodos ORDER BY created_at DESC');
+        res.json(result.rows);
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
@@ -47,18 +82,16 @@ app.get('/api/mytodos', async (req, res) => {
 
 // Create todo
 app.post('/api/mytodos', async (req, res) => {
+    const { text } = req.body;
+    if (!text || text.trim() === '') {
+        return res.status(400).json({ error: 'Please enter task' });
+    }
     try {
-        const { text } = req.body;
-        if (!text) {
-            return res.status(400).json({ error: 'Please enter task' });
-        }
-        const todo = {
-            text,
-            completed: false,
-            created_at: new Date()
-        };
-        const result = await db.collection('todos').insertOne(todo);
-        res.json({ ...todo, id: result.insertedId });
+        const result = await pool.query(
+            'INSERT INTO mytodos (text) VALUES ($1) RETURNING *',
+            [text.trim()]
+        );
+        res.json(result.rows[0]);
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
@@ -66,19 +99,22 @@ app.post('/api/mytodos', async (req, res) => {
 
 // Update todo
 app.put('/api/mytodos/:id', async (req, res) => {
+    const { id } = req.params;
+    const { completed, text } = req.body;
     try {
-        const { id } = req.params;
-        const { completed, text } = req.body;
-        const update = {};
-        if (completed !== undefined) update.completed = completed;
-        if (text !== undefined) update.text = text;
-
-        const result = await db.collection('todos').findOneAndUpdate(
-            { _id: new ObjectId(id) },
-            { $set: update },
-            { returnDocument: 'after' }
-        );
-        res.json(result.value);
+        let result;
+        if (completed !== undefined && text === undefined) {
+            result = await pool.query(
+                'UPDATE mytodos SET completed = $1 WHERE id = $2 RETURNING *',
+                [completed, id]
+            );
+        } else if (text !== undefined) {
+            result = await pool.query(
+                'UPDATE mytodos SET text = $1 WHERE id = $2 RETURNING *',
+                [text, id]
+            );
+        }
+        res.json(result.rows[0]);
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
@@ -86,9 +122,9 @@ app.put('/api/mytodos/:id', async (req, res) => {
 
 // Delete todo
 app.delete('/api/mytodos/:id', async (req, res) => {
+    const { id } = req.params;
     try {
-        const { id } = req.params;
-        await db.collection('todos').deleteOne({ _id: new ObjectId(id) });
+        await pool.query('DELETE FROM mytodos WHERE id = $1', [id]);
         res.json({ message: 'Task deleted' });
     } catch (err) {
         res.status(500).json({ error: err.message });
