@@ -14,24 +14,31 @@ const pool = new Pool({
     }
 });
 
-// Test database connection with retries
+// Add health check endpoint
+app.get('/health', (req, res) => {
+    res.json({ status: 'ok' });
+});
+
+// Test database connection with better error logging
 async function connectDB() {
     let retries = 5;
     while (retries) {
         try {
             const client = await pool.connect();
             console.log('Connected to PostgreSQL database');
+            console.log('Connection string:', process.env.DATABASE_URL?.replace(/:[^:@]*@/, ':****@')); // Hide password
             await createTable();
             client.release();
             return;
         } catch (err) {
             console.error(`Connection attempt ${6 - retries} failed:`, err.message);
+            console.error('Full error:', err);
             retries -= 1;
             if (!retries) {
                 console.log('Failed to connect after 5 attempts, but continuing...');
                 return;
             }
-            await new Promise(resolve => setTimeout(resolve, 2000));
+            await new Promise(resolve => setTimeout(resolve, 5000)); // Increased wait time
         }
     }
 }
