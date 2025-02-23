@@ -11,14 +11,7 @@ const pool = new Pool({
     connectionString: process.env.DATABASE_URL,
     ssl: {
         rejectUnauthorized: false
-    },
-    // Force IPv4
-    host: process.env.PGHOST4 || process.env.PGHOST,
-    // Add connection options
-    options: '-c search_path=public',
-    keepAlive: true,
-    idleTimeoutMillis: 30000,
-    connectionTimeoutMillis: 10000
+    }
 });
 
 // Add health check endpoint
