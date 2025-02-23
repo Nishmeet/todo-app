@@ -3,12 +3,12 @@ import AddTodo from './components/AddTodo'; // Import the AddTodo component
 import ToDoList from './components/ToDoList';
 import axios from 'axios';
 import './App.css';
-
-
-
-const API_BASE_URL = 'http://localhost:4000/api';
+import API_BASE_URL from './config';
 
 console.log('API URL:', API_BASE_URL);
+
+// Add default axios configuration
+axios.defaults.withCredentials = true;
 
 function App() {
   const [todos, setTodos] = useState([]);
@@ -49,7 +49,7 @@ function App() {
         console.log('Server response:', response.data);
         setTodos([...todos, response.data]);
     } catch (error) {
-        console.error('Error adding todo:', error.response?.data || error.message);
+        console.error('Error adding todo:', error);
         alert(error.response?.data?.error || error.message || 'Error adding todo. Please try again.');
     }
   };

@@ -1,20 +1,22 @@
-
-  {
-    "name": "todo-server",
-    "version": "1.0.0",
-    "description": "Todo app backend",
-    "main": "index.js",
-    "scripts": {
-      "start": "node index.js",
-      "dev": "nodemon index.js"
-    },
-    "dependencies": {
-      "cors": "^2.8.5",
-      "express": "^4.18.2",
-      "sqlite3": "^5.1.6"
-    },
-    "devDependencies": {
-      "nodemon": "^2.0.22"
-    }
+{
+  "name": "todo-server",
+  "version": "1.0.0",
+  "description": "Todo app backend",
+  "main": "index.js",
+  "engines": {
+    "node": ">=14.0.0"
+  },
+  "scripts": {
+    "start": "node index.js",
+    "dev": "nodemon index.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^4.18.2",
+    "mongodb": "^5.0.0"
+  },
+  "devDependencies": {
+    "nodemon": "^2.0.22"
   }
+}
 

@@ -1,145 +1,100 @@
-const express=require('express')
-const cors=require('cors');
-const path=require('path');
-const sqlite3=require('sqlite3').verbose();
+const express = require('express');
+const cors = require('cors');
+const { MongoClient, ObjectId } = require('mongodb');
 
-const app=express();
-const PORT=4000;
+const app = express();
+const PORT = process.env.PORT || 4000;
 
-app.use(cors());
-app.use(express.json());
+// MongoDB Connection URL
+const MONGODB_URI = process.env.MONGODB_URI || 'mongodb+srv://your-mongodb-url';
+let db;
 
-
-// Database setup
-const dbPath = path.join(__dirname, 'mytodo.db');
-const db = new sqlite3.Database(dbPath, (err) => {
-  if (err) {
-    console.error('Error connecting to database:', err);
-  } else {
-    console.log('Connected to SQLite database at:', dbPath);
-    createTable();
-  }
-});
-// Create todos table with better error handling
-function createTable() {
-    const sql = `
-      CREATE TABLE IF NOT EXISTS mytodos (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        text TEXT NOT NULL,
-        completed BOOLEAN DEFAULT 0,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      )
-    `;
-    db.run(sql, (err) => {
-      if (err) {
-        console.error('Error creating table:', err);
-      } else {
-        console.log('Todos table ready');
-      }
-    });
+// Connect to MongoDB
+async function connectToDb() {
+    try {
+        const client = await MongoClient.connect(MONGODB_URI);
+        db = client.db('tododb');
+        console.log('Connected to MongoDB');
+    } catch (err) {
+        console.error('MongoDB connection error:', err);
+    }
 }
 
-//Api - Get - retrive all the todos from the table
-app.get('/api/mytodos',(req,res,next)=>{
-    console.log('GET /api/mytodos request received');
-    db.all('SELECT * FROM mytodos',[],(error,rows)=>{
-        if(error) {
-            return res.status(500).json({error: error.message});
-        }
-        res.json(rows);
-    });
-});
+connectToDb();
 
-//API -post to create new Todo -
-app.post('/api/mytodos',(req,res,next)=>{
-    console.log('Received todo request with body:', req.body);
-    
-    // Handle both array format and object format
-    let todoText;
-    if (Array.isArray(req.body) && req.body[0] && Array.isArray(req.body[0])) {
-        // Handle array format [['text', 'value']]
-        todoText = req.body[0][1];
-    } else if (Array.isArray(req.body) && req.body.length === 2) {
-        // Handle array format ['text', 'value']
-        todoText = req.body[1];
-    } else {
-        // Handle object format {text: 'value'}
-        todoText = req.body.text;
-    }
-    
-    if(!todoText || todoText.trim() === '') {
-        console.log('Invalid todo text received:', todoText);
-        return res.status(400).json({error: 'Please enter task'});
-    }
-    
-    db.run('INSERT INTO mytodos (text) VALUES (?)', [todoText],
-        function (err){
-            if(err) {
-                console.log("Database Error: ",err);
-                return res.status(500).json({error: err.message});
-            }
-            const newtodo = {
-                id: this.lastID,
-                text: todoText,
-                completed: 0,
-            };
-            console.log('Successfully created todo:', newtodo);
-            res.json(newtodo);
-        }
-    );
-});
+app.use(cors({
+    origin: [
+        'http://localhost:3000',
+        'https://todo-app-client-q25j.onrender.com',  // Add your Render client URL
+        
+    ],
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    credentials: true,
+    allowedHeaders: ['Content-Type', 'Authorization']
+}));
 
-//Api Put - request to update changes in the table
-app.put('/api/mytodos/:id',(req,res,next)=>{
-    const { id } = req.params;
-    const { completed, text } = req.body;
-    
-    // Handle both completed and text updates
-    if (completed !== undefined && text === undefined) {
-        // Only updating completed status
-        db.run('UPDATE mytodos SET completed = ? WHERE id = ?', [completed, id], (err)=> {
-            if(err) {
-                console.error('Database error:', err);
-                return res.status(500).json({error: err.message});
-            }
-            res.json({id, completed});
-        });
-    } else if (text !== undefined && completed === undefined) {
-        // Only updating text
-        db.run('UPDATE mytodos SET text = ? WHERE id = ?', [text, id], (err)=> {
-            if(err) {
-                console.error('Database error:', err);
-                return res.status(500).json({error: err.message});
-            }
-            res.json({id, text});
-        });
-    } else {
-        // Updating both completed and text
-        db.run('UPDATE mytodos SET completed = ?, text = ? WHERE id = ?', [completed, text, id], (err)=> {
-            if(err) {
-                console.error('Database error:', err);
-                return res.status(500).json({error: err.message});
-            }
-            res.json({id, completed, text});
-        });
+app.use(express.json());
+
+// Get all todos
+app.get('/api/mytodos', async (req, res) => {
+    try {
+        const todos = await db.collection('todos').find().toArray();
+        res.json(todos);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
     }
 });
 
-//delete from the table
-app.delete('/api/mytodos/:id',(req,res,next)=>{
-    const { id } = req.params;
-    db.run('DELETE FROM mytodos WHERE id = ?', [id], (err)=>{
-        if(err){
-            return res.status(500).json({error: err.message});
+// Create todo
+app.post('/api/mytodos', async (req, res) => {
+    try {
+        const { text } = req.body;
+        if (!text) {
+            return res.status(400).json({ error: 'Please enter task' });
         }
-        res.json({message: 'Task Deleted'});
-    });
+        const todo = {
+            text,
+            completed: false,
+            created_at: new Date()
+        };
+        const result = await db.collection('todos').insertOne(todo);
+        res.json({ ...todo, id: result.insertedId });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
 });
 
-app.get('/test', (req, res) => {
-  res.send('Server is working!');
+// Update todo
+app.put('/api/mytodos/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { completed, text } = req.body;
+        const update = {};
+        if (completed !== undefined) update.completed = completed;
+        if (text !== undefined) update.text = text;
+
+        const result = await db.collection('todos').findOneAndUpdate(
+            { _id: new ObjectId(id) },
+            { $set: update },
+            { returnDocument: 'after' }
+        );
+        res.json(result.value);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Delete todo
+app.delete('/api/mytodos/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        await db.collection('todos').deleteOne({ _id: new ObjectId(id) });
+        res.json({ message: 'Task deleted' });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
 });
 
 app.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
-  }); 
+}); 
