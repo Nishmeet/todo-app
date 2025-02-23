@@ -25,8 +25,8 @@ connectToDb();
 app.use(cors({
     origin: [
         'http://localhost:3000',
-        'https://todo-app-client-q25j.onrender.com',  // Add your Render client URL
-        
+        'https://todo-app-myclient.onrender.com',  // Add your new client URL
+       
     ],
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     credentials: true,
