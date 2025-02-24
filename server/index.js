@@ -15,102 +15,19 @@ const pool = new Pool({
     }
 });
 
-// Serve static files from the React app
-app.use(express.static(path.join(__dirname, '../client/build')));
-
-// Function to get IPv4 address
-async function getIPv4Address(hostname) {
-    try {
-        const addresses = await dns.resolve4(hostname);
-        return addresses[0];
-    } catch (err) {
-        console.error('DNS resolution error:', err);
-        return hostname;
-    }
-}
-
-// Initialize database connection
-async function initializeDatabase() {
-    try {
-        // Extract hostname from DATABASE_URL
-        const url = new URL(process.env.DATABASE_URL);
-        const ipv4 = await getIPv4Address(url.hostname);
-        
-        // Reconstruct connection string with IPv4
-        const connectionString = process.env.DATABASE_URL.replace(url.hostname, ipv4);
-        
-        return new Pool({
-            connectionString,
-            ssl: {
-                rejectUnauthorized: false
-            }
-        });
-    } catch (err) {
-        console.error('Database initialization error:', err);
-        process.exit(1);
-    }
-}
-
-let pool;
-
-// Initialize pool
-initializeDatabase().then(p => {
-    pool = p;
-    console.log('Database pool initialized');
-}).catch(err => {
-    console.error('Failed to initialize database:', err);
-});
-
-// Test connection endpoint
-app.get('/', async (req, res) => {
-    try {
-        if (!pool) {
-            return res.status(500).json({ status: 'Error', message: 'Database not initialized' });
-        }
-        const client = await pool.connect();
-        await client.query('SELECT NOW()');
-        client.release();
-        res.json({ status: 'Connected to database!' });
-    } catch (err) {
-        res.status(500).json({ status: 'Error', message: err.message });
-    }
-});
-
-// Add health check endpoint
-app.get('/health', (req, res) => {
-    res.json({ status: 'ok' });
-});
-
-// Test database connection with better error logging
+// Test database connection
 async function connectDB() {
-    let retries = 5;
-    while (retries) {
-        try {
-            const client = await pool.connect();
-            console.log('Connected to PostgreSQL database');
-            console.log('Connection info:', {
-                host: process.env.PGHOST,
-                port: process.env.PGPORT,
-                database: process.env.PGDATABASE,
-                user: process.env.PGUSER?.split('@')[0] // Log without password
-            });
-            await createTable();
-            client.release();
-            return;
-        } catch (err) {
-            console.error(`Connection attempt ${6 - retries} failed:`, err.message);
-            console.error('Connection error details:', {
-                code: err.code,
-                syscall: err.syscall,
-                address: err.address
-            });
-            retries -= 1;
-            if (!retries) {
-                console.log('Failed to connect after 5 attempts, but continuing...');
-                return;
-            }
-            await new Promise(resolve => setTimeout(resolve, 5000));
-        }
+    try {
+        const client = await pool.connect();
+        console.log('Connected to PostgreSQL database');
+        await createTable();
+        client.release();
+    } catch (err) {
+        console.error('Database connection error:', err);
+        console.error('Connection details:', {
+            error: err.message,
+            code: err.code
+        });
     }
 }
 
@@ -133,27 +50,14 @@ async function createTable() {
 }
 
 // Initialize database connection
-connectDB().catch(console.error);
+connectDB();
 
-// CORS configuration
-app.use(cors({
-    origin: [
-        'http://localhost:3000',
-        process.env.CLIENT_URL || '*'
-    ],
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-    credentials: true,
-    allowedHeaders: ['Content-Type', 'Authorization']
-}));
-
+// Middleware
+app.use(cors());
 app.use(express.json());
+app.use(express.static(path.join(__dirname, '../client/build')));
 
-// Add at the start of your routes
-app.get('/', (req, res) => {
-    res.json({ message: 'Server is running' });
-});
-
-// Get all todos
+// API Routes
 app.get('/api/mytodos', async (req, res) => {
     try {
         const result = await pool.query('SELECT * FROM mytodos ORDER BY created_at DESC');
@@ -163,7 +67,6 @@ app.get('/api/mytodos', async (req, res) => {
     }
 });
 
-// Create todo
 app.post('/api/mytodos', async (req, res) => {
     const { text } = req.body;
     if (!text || text.trim() === '') {
@@ -180,7 +83,6 @@ app.post('/api/mytodos', async (req, res) => {
     }
 });
 
-// Update todo
 app.put('/api/mytodos/:id', async (req, res) => {
     const { id } = req.params;
     const { completed, text } = req.body;
@@ -203,7 +105,6 @@ app.put('/api/mytodos/:id', async (req, res) => {
     }
 });
 
-// Delete todo
 app.delete('/api/mytodos/:id', async (req, res) => {
     const { id } = req.params;
     try {
@@ -214,7 +115,7 @@ app.delete('/api/mytodos/:id', async (req, res) => {
     }
 });
 
-// The "catch all" handler for React app
+// Serve React app
 app.get('*', (req, res) => {
     res.sendFile(path.join(__dirname, '../client/build/index.html'));
 });
