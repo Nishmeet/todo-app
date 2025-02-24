@@ -2,7 +2,6 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const { Pool } = require('pg');
-const path = require('path');
 
 const app = express();
 const PORT = process.env.PORT || 4000;
@@ -55,7 +54,11 @@ connectDB();
 // Middleware
 app.use(cors());
 app.use(express.json());
-app.use(express.static(path.join(__dirname, '../client/build')));
+
+// Health check route
+app.get('/', (req, res) => {
+    res.json({ status: 'API is running' });
+});
 
 // API Routes
 app.get('/api/mytodos', async (req, res) => {
@@ -113,11 +116,6 @@ app.delete('/api/mytodos/:id', async (req, res) => {
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
-});
-
-// Serve React app
-app.get('*', (req, res) => {
-    res.sendFile(path.join(__dirname, '../client/build/index.html'));
 });
 
 app.listen(PORT, () => {
