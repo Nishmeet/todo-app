@@ -2,16 +2,24 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const { Pool } = require('pg');
+const dns = require('dns').promises;
 
 const app = express();
 const PORT = process.env.PORT || 4000;
+
+// Force IPv4
+dns.setDefaultResultOrder('ipv4first');
 
 // Database configuration
 const pool = new Pool({
     connectionString: process.env.DATABASE_URL,
     ssl: {
         rejectUnauthorized: false
-    }
+    },
+    // Connection settings
+    max: 20,
+    idleTimeoutMillis: 30000,
+    connectionTimeoutMillis: 5000
 });
 
 // Test database connection
@@ -22,11 +30,9 @@ async function connectDB() {
         await createTable();
         client.release();
     } catch (err) {
-        console.error('Database connection error:', err);
-        console.error('Connection details:', {
-            error: err.message,
-            code: err.code
-        });
+        console.error('Database connection error:', err.message);
+        // Don't exit on error
+        console.log('Continuing despite connection error...');
     }
 }
 
