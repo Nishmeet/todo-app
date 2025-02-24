@@ -10,16 +10,16 @@ const PORT = process.env.PORT || 4000;
 // Force IPv4
 dns.setDefaultResultOrder('ipv4first');
 
-// Database configuration
+// Database configuration using direct connection details
 const pool = new Pool({
-    connectionString: process.env.DATABASE_URL,
+    user: 'postgres',
+    password: 'Nishi1225FS',
+    host: 'db.ohlhnkwlvrxjojikyzpv.supabase.co',
+    port: 5432,
+    database: 'postgres',
     ssl: {
         rejectUnauthorized: false
-    },
-    // Connection settings
-    max: 20,
-    idleTimeoutMillis: 30000,
-    connectionTimeoutMillis: 5000
+    }
 });
 
 // Test database connection
