@@ -2,15 +2,66 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const { Pool } = require('pg');
+const dns = require('dns').promises;
 
 const app = express();
 const PORT = process.env.PORT || 4000;
 
-// Database configuration - simplified
-const pool = new Pool({
-    connectionString: process.env.DATABASE_URL,
-    ssl: {
-        rejectUnauthorized: false
+// Function to get IPv4 address
+async function getIPv4Address(hostname) {
+    try {
+        const addresses = await dns.resolve4(hostname);
+        return addresses[0];
+    } catch (err) {
+        console.error('DNS resolution error:', err);
+        return hostname;
+    }
+}
+
+// Initialize database connection
+async function initializeDatabase() {
+    try {
+        // Extract hostname from DATABASE_URL
+        const url = new URL(process.env.DATABASE_URL);
+        const ipv4 = await getIPv4Address(url.hostname);
+        
+        // Reconstruct connection string with IPv4
+        const connectionString = process.env.DATABASE_URL.replace(url.hostname, ipv4);
+        
+        return new Pool({
+            connectionString,
+            ssl: {
+                rejectUnauthorized: false
+            }
+        });
+    } catch (err) {
+        console.error('Database initialization error:', err);
+        process.exit(1);
+    }
+}
+
+let pool;
+
+// Initialize pool
+initializeDatabase().then(p => {
+    pool = p;
+    console.log('Database pool initialized');
+}).catch(err => {
+    console.error('Failed to initialize database:', err);
+});
+
+// Test connection endpoint
+app.get('/', async (req, res) => {
+    try {
+        if (!pool) {
+            return res.status(500).json({ status: 'Error', message: 'Database not initialized' });
+        }
+        const client = await pool.connect();
+        await client.query('SELECT NOW()');
+        client.release();
+        res.json({ status: 'Connected to database!' });
+    } catch (err) {
+        res.status(500).json({ status: 'Error', message: err.message });
     }
 });
 
