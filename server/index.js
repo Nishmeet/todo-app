@@ -10,7 +10,7 @@ const PORT = process.env.PORT || 4000;
 // Force IPv4
 dns.setDefaultResultOrder('ipv4first');
 
-// Database configuration using direct connection details
+// Database configuration with detailed logging
 const pool = new Pool({
     user: 'postgres',
     password: 'Nishi1225FS',
@@ -25,16 +25,34 @@ const pool = new Pool({
 // Test database connection
 async function connectDB() {
     try {
+        console.log('Attempting database connection...');
+        console.log('Connection details:', {
+            host: 'db.ohlhnkwlvrxjojikyzpv.supabase.co',
+            port: 5432,
+            database: 'postgres',
+            user: 'postgres'
+        });
+        
         const client = await pool.connect();
-        console.log('Connected to PostgreSQL database');
+        console.log('Successfully connected to database!');
+        
+        // Test query
+        const result = await client.query('SELECT NOW()');
+        console.log('Database time:', result.rows[0].now);
+        
         await createTable();
         client.release();
     } catch (err) {
-        console.error('Database connection error:', err.message);
-        // Don't exit on error
-        console.log('Continuing despite connection error...');
+        console.error('Database connection error:', {
+            message: err.message,
+            code: err.code,
+            stack: err.stack
+        });
     }
 }
+
+// Initialize database connection
+connectDB();
 
 // Create table if not exists
 async function createTable() {
@@ -53,9 +71,6 @@ async function createTable() {
         console.error('Error creating table:', err.message);
     }
 }
-
-// Initialize database connection
-connectDB();
 
 // Middleware
 app.use(cors());
