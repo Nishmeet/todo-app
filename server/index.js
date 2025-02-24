@@ -2,10 +2,21 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const { Pool } = require('pg');
-const dns = require('dns').promises;
+const path = require('path');
 
 const app = express();
 const PORT = process.env.PORT || 4000;
+
+// Database configuration
+const pool = new Pool({
+    connectionString: process.env.DATABASE_URL,
+    ssl: {
+        rejectUnauthorized: false
+    }
+});
+
+// Serve static files from the React app
+app.use(express.static(path.join(__dirname, '../client/build')));
 
 // Function to get IPv4 address
 async function getIPv4Address(hostname) {
@@ -124,11 +135,11 @@ async function createTable() {
 // Initialize database connection
 connectDB().catch(console.error);
 
+// CORS configuration
 app.use(cors({
     origin: [
         'http://localhost:3000',
-        'https://todo-app-myclient.onrender.com',
-        'https://your-render-server-url.onrender.com'
+        process.env.CLIENT_URL || '*'
     ],
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     credentials: true,
@@ -201,6 +212,11 @@ app.delete('/api/mytodos/:id', async (req, res) => {
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
+});
+
+// The "catch all" handler for React app
+app.get('*', (req, res) => {
+    res.sendFile(path.join(__dirname, '../client/build/index.html'));
 });
 
 app.listen(PORT, () => {
